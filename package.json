@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "test": "cd backend && npm test"
+  },
+  "devDependencies": {
+    "serve": "^14.2.6"
+  }
+}

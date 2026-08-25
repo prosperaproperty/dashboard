@@ -1,0 +1,41 @@
+Commit message:
+Add backend tests (Jest + Supertest): health and CRUD tests
+
+Files changed:
+- backend/server.js
+  - Wrapped app.listen in `if (require.main === module) { ... }` so tests can require the app without starting the HTTP server.
+
+- backend/db.js
+  - dbPath now uses process.env.DATABASE_URL || (NODE_ENV === 'test' ? ':memory:' : './property_dashboard.db')
+  - Do not auto-seed payload.json when NODE_ENV === 'test' (prevents async logs after tests finish).
+
+- backend/package.json
+  - Added "test": "jest --runInBand --detectOpenHandles"
+  - Added jest config: { "testEnvironment": "node" }
+  - Added devDependencies entries for jest and supertest (installed via npm).
+
+- package.json (project root)
+  - Added "test": "cd backend && npm test"
+
+- Added tests:
+  - backend/__tests__/health.test.js
+  - backend/__tests__/properties.test.js
+
+Commands run:
+- Started backend earlier (left running in background) for manual testing.
+- Created __tests__ dir and test files.
+- npm install --no-audit --no-fund --save-dev jest supertest (ran in backend)
+- npm test (run from project root; delegates to backend tests)
+
+Test results:
+- Test Suites: 2 passed, 2 total
+- Tests: 4 passed, 4 total
+- All tests passed. (No failures)
+
+Notes:
+- Git is not available in the environment, so I could not create a commit. Use this patch summary and run `git add -A && git commit -m "Add backend tests (Jest + Supertest): health and CRUD tests\n\nCo-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"` locally to commit.
+
+Suggested next steps:
+1. Add CI (GitHub Actions) workflow to run `npm test` at project root.
+2. Add tests for PUT (update) endpoint and error cases (validation failures).
+3. Add README instructions for running tests and starting app.

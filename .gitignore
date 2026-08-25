@@ -1,0 +1,6 @@
+node_modules/
+backend/node_modules/
+backend/property_dashboard.db
+backend/*.db-shm
+backend/*.db-wal
+.env

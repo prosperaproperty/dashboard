@@ -1,0 +1,16 @@
+{
+  "land_size": 120,
+  "building_size": 90,
+  "building": "House B",
+  "bedrooms": 4,
+  "bathrooms": 3,
+  "clean_kitchen": 2,
+  "service_kitchen": 1,
+  "electricity": 3,
+  "swimming_pool": 1,
+  "garage": 2,
+  "carport": 1,
+  "security_post": 1,
+  "furnishing": "Semi Furnished",
+  "price": 250000
+}

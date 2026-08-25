@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Property Dashboard</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Property Dashboard</h1>
+      <p>Manage, track, and analyze your property listings</p>
+    </header>
+
+    <section class="card form-card">
+      <h2>Add New Property</h2>
+      <form id="propertyForm">
+        <div class="grid">
+          <label>
+            Property Type
+            <select name="building" required>
+              <option value="">Select Property Type</option>
+              <option value="House">House</option>
+              <option value="Villa">Villa</option>
+              <option value="Apartment">Apartment</option>
+              <option value="Townhouse">Townhouse</option>
+              <option value="Land">Land</option>
+              <option value="Office">Office</option>
+              <option value="Warehouse">Warehouse</option>
+              <option value="Shop">Shop</option>
+            </select>
+          </label>
+          <label>
+            Property Name
+            <input type="text" name="property_name" placeholder="Enter property name" required />
+          </label>
+          <label>
+            Land Size (m²)
+            <input type="number" step="0.01" name="land_size" required />
+          </label>
+          <label>
+            Building Size (m²)
+            <input type="number" step="0.01" name="building_size" required />
+          </label>
+          <label>
+            Bedrooms
+            <input type="number" name="bedrooms" min="0" required />
+          </label>
+          <label>
+            Bathrooms
+            <input type="number" name="bathrooms" min="0" required />
+          </label>
+          <label>
+            Garage
+            <input type="number" name="garage" min="0" value="0" required />
+          </label>
+          <label>
+            Carport
+            <input type="number" name="carport" min="0" value="0" required />
+          </label>
+          <label>
+            Furnishing
+            <select name="furnishing" required>
+              <option value="None">None</option>
+              <option value="Semi Furnished">Semi Furnished</option>
+              <option value="Fully Furnished">Fully Furnished</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="checks">
+          <label>Clean Kitchen <input type="number" step="0.01" name="clean_kitchen" /></label>
+          <label>Service Kitchen <input type="number" step="0.01" name="service_kitchen" /></label>
+          <label>Electricity <input type="number" step="0.01" name="electricity" /></label>
+          <label>Swimming Pool <input type="number" step="0.01" name="swimming_pool" /></label>
+          <label>Security Post <input type="number" step="0.01" name="security_post" /></label>
+          <label>Price <input type="number" step="0.01" name="price" required /></label>
+        </div>
+
+        <button type="submit">Create Property</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <div class="section-header">
+        <h2>Property Listings</h2>
+        <button id="refreshBtn" type="button">Refresh</button>
+      </div>
+      <div id="stats" class="stats"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Property</th>
+              <th>Land</th>
+              <th>Building</th>
+              <th>Beds</th>
+              <th>Baths</th>
+              <th>Price</th>
+              <th>Features</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="propertyTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:3001/api/properties';
+
+    const propertyForm = document.getElementById('propertyForm');
+    const propertyTableBody = document.getElementById('propertyTableBody');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const stats = document.getElementById('stats');
+
+    function formatCurrency(value) {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0
+      }).format(Number(value) || 0);
+    }
+
+    function collectFeatures(property) {
+      const features = [];
+      if (Number(property.clean_kitchen) > 0) features.push(`Clean Kitchen:${property.clean_kitchen}`);
+      if (Number(property.service_kitchen) > 0) features.push(`Service Kitchen:${property.service_kitchen}`);
+      if (Number(property.electricity) > 0) features.push(`Electricity:${property.electricity}`);
+      if (Number(property.swimming_pool) > 0) features.push(`Pool:${property.swimming_pool}`);
+      if (Number(property.security_post) > 0) features.push(`Security:${property.security_post}`);
+      if (property.garage > 0) features.push(`Garage:${property.garage}`);
+      if (property.carport > 0) features.push(`Carport:${property.carport}`);
+      return features.length ? features.join(', ') : '-';
+    }
+
+    function renderStats(properties) {
+      const total = properties.length;
+      const totalValue = properties.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
+      const avgValue = total ? totalValue / total : 0;
+
+      stats.innerHTML = `
+        <div class="stat-item"><strong>${total}</strong><span>Total Properties</span></div>
+        <div class="stat-item"><strong>${formatCurrency(totalValue)}</strong><span>Total Portfolio</span></div>
+        <div class="stat-item"><strong>${formatCurrency(avgValue)}</strong><span>Average Price</span></div>
+      `;
+    }
+
+    function renderTable(properties) {
+      if (!properties.length) {
+        propertyTableBody.innerHTML = `
+          <tr>
+            <td colspan="9" class="empty">No properties found. Add your first property above.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      propertyTableBody.innerHTML = properties.map((p) => `
+        <tr>
+          <td>${p.property_code || ('#' + p.id)}</td>
+          <td>${p.property_name || p.building}</td>
+          <td>${p.land_size}</td>
+          <td>${p.building_size}</td>
+          <td>${p.bedrooms}</td>
+          <td>${p.bathrooms}</td>
+          <td>${formatCurrency(p.price)}</td>
+          <td>${collectFeatures(p)}</td>
+          <td>
+            <button class="danger" onclick="deleteProperty(${p.id})">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadProperties() {
+      try {
+        const response = await fetch(API_BASE);
+        if (!response.ok) throw new Error('Failed to load properties');
+        const data = await response.json();
+        renderStats(data);
+        renderTable(data);
+      } catch (error) {
+        alert('Error loading properties: ' + error.message);
+      }
+    }
+
+    async function deleteProperty(id) {
+      const confirmDelete = confirm('Delete this property?');
+      if (!confirmDelete) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to delete property');
+        }
+        await loadProperties();
+      } catch (error) {
+        alert('Error deleting property: ' + error.message);
+      }
+    }
+
+    propertyForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(propertyForm);
+
+      const payload = {
+        land_size: Number(formData.get('land_size')),
+        building_size: Number(formData.get('building_size')),
+        building: formData.get('building'),
+        property_name: formData.get('property_name'),
+        bedrooms: Number(formData.get('bedrooms')),
+        bathrooms: Number(formData.get('bathrooms')),
+        clean_kitchen: Number(formData.get('clean_kitchen') || 0),
+        service_kitchen: Number(formData.get('service_kitchen') || 0),
+        electricity: Number(formData.get('electricity') || 0),
+        swimming_pool: Number(formData.get('swimming_pool') || 0),
+        garage: Number(formData.get('garage') || 0),
+        carport: Number(formData.get('carport') || 0),
+        security_post: Number(formData.get('security_post') || 0),
+        furnishing: formData.get('furnishing'),
+        price: Number(formData.get('price'))
+      };
+
+      try {
+        const response = await fetch(API_BASE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || 'Failed to create property');
+        }
+
+        propertyForm.reset();
+        await loadProperties();
+      } catch (error) {
+        alert('Error creating property: ' + error.message);
+      }
+    });
+
+    refreshBtn.addEventListener('click', loadProperties);
+
+    loadProperties();
+  </script>
+</body>
+</html>

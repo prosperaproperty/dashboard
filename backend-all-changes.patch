@@ -1,0 +1,47 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,32 @@
++name: CI
++
++on:
++  push:
++    branches: [ main, master ]
++  pull_request:
++    branches: [ main, master ]
++
++jobs:
++  test:
++    runs-on: ubuntu-latest
++
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Use Node.js
++        uses: actions/setup-node@v4
++        with:
++          node-version: '18'
++          cache: 'npm'
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Run tests
++        run: npm test
++
++diff --git a/backend/__tests__/properties_extra.test.js b/backend/__tests__/properties_extra.test.js
++new file mode 100644
++--- /dev/null
+++++ b/backend/__tests__/properties_extra.test.js
++@@ -0,0 +1,99 @@
++<file contents omitted for brevity in patch>
++
++diff --git a/README.md b/README.md
++new file mode 100644
++--- /dev/null
+++++ b/README.md
++@@ -0,0 +1,50 @@
++<file contents omitted for brevity in patch>
++

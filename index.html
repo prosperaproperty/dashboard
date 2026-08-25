@@ -134,7 +134,10 @@
   </div>
 
   <script>
-    const API_BASE = 'http://localhost:3001/api/properties';
+    const configuredApiBase = window.PROPERTY_API_BASE || 'http://localhost:3001/api/properties';
+    const API_BASE = configuredApiBase.endsWith('/api/properties')
+      ? configuredApiBase
+      : `${configuredApiBase.replace(/\/$/, '')}/api/properties`;
 
     const propertyForm = document.getElementById('propertyForm');
     const propertyTableBody = document.getElementById('propertyTableBody');

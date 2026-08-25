@@ -134,6 +134,7 @@
   </div>
 
   <script>
+    window.PROPERTY_API_BASE = window.PROPERTY_API_BASE || 'https://property-dashboard-api-production.up.railway.app/api/properties';
     const configuredApiBase = window.PROPERTY_API_BASE || 'http://localhost:3001/api/properties';
     const API_BASE = configuredApiBase.endsWith('/api/properties')
       ? configuredApiBase

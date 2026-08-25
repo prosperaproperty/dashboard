@@ -88,6 +88,23 @@ This repo includes workflows for:
 - The frontend is static and can be deployed to a static hosting service such as GitHub Pages, Vercel static hosting, Netlify, or any web server serving the root files.
 - The backend is a Node.js server and must be hosted separately (for example: Railway, Render, Fly.io, VPS, or a Node-capable hosting platform).
 - For local development, the frontend expects the API at `http://localhost:3001/api/properties`.
+- A ready-to-use Render configuration is included at `render.yaml` for a Node web service.
+
+## Deploy the API to Render
+
+1. Sign in to Render and create a new Web Service.
+2. Connect the GitHub repository `prosperaproperty/dashboard`.
+3. Use the default settings from `render.yaml`.
+4. Render will run:
+   - `cd backend && npm install`
+   - `cd backend && npm start`
+5. After deployment, copy the live API URL and set it in the frontend as the `window.PROPERTY_API_BASE` value, or update the built frontend if you are wiring to a production API.
+
+Example production API base:
+
+```js
+window.PROPERTY_API_BASE = 'https://your-render-service.onrender.com/api/properties';
+```
 
 ## Resetting local data
 

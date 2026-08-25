@@ -14,7 +14,10 @@
     </header>
 
     <section class="card form-card">
-      <h2>Add New Property</h2>
+      <div class="form-header">
+        <h2 id="formTitle">Add New Property</h2>
+        <button id="cancelEditBtn" type="button" class="secondary hidden">Cancel Edit</button>
+      </div>
       <form id="propertyForm">
         <div class="grid">
           <label>
@@ -78,15 +81,36 @@
           <label>Price <input type="number" step="0.01" name="price" required /></label>
         </div>
 
-        <button type="submit">Create Property</button>
+        <div class="form-actions">
+          <button id="submitBtn" type="submit">Create Property</button>
+        </div>
+        <div id="formNotice" class="notice" aria-live="polite"></div>
       </form>
     </section>
 
     <section class="card">
       <div class="section-header">
         <h2>Property Listings</h2>
-        <button id="refreshBtn" type="button">Refresh</button>
+        <div class="header-actions">
+          <button id="refreshBtn" type="button" class="secondary">Refresh</button>
+        </div>
       </div>
+
+      <div class="toolbar">
+        <input id="searchInput" type="search" placeholder="Search by name, code, or type" aria-label="Search properties" />
+        <select id="buildingFilter" aria-label="Filter by property type">
+          <option value="all">All types</option>
+          <option value="House">House</option>
+          <option value="Villa">Villa</option>
+          <option value="Apartment">Apartment</option>
+          <option value="Townhouse">Townhouse</option>
+          <option value="Land">Land</option>
+          <option value="Office">Office</option>
+          <option value="Warehouse">Warehouse</option>
+          <option value="Shop">Shop</option>
+        </select>
+      </div>
+
       <div id="stats" class="stats"></div>
       <div class="table-wrap">
         <table>
@@ -116,6 +140,63 @@
     const propertyTableBody = document.getElementById('propertyTableBody');
     const refreshBtn = document.getElementById('refreshBtn');
     const stats = document.getElementById('stats');
+    const searchInput = document.getElementById('searchInput');
+    const buildingFilter = document.getElementById('buildingFilter');
+    const formTitle = document.getElementById('formTitle');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const formNotice = document.getElementById('formNotice');
+
+    let allProperties = [];
+    let currentEditId = null;
+
+    function setNotice(text, isError = false) {
+      formNotice.textContent = text || '';
+      formNotice.classList.toggle('error', Boolean(isError));
+    }
+
+    function resetFormState() {
+      currentEditId = null;
+      formTitle.textContent = 'Add New Property';
+      submitBtn.textContent = 'Create Property';
+      cancelEditBtn.classList.add('hidden');
+      propertyForm.reset();
+      setNotice('');
+    }
+
+    function fillForm(property) {
+      const fields = {
+        building: property.building,
+        property_name: property.property_name || '',
+        land_size: property.land_size,
+        building_size: property.building_size,
+        bedrooms: property.bedrooms,
+        bathrooms: property.bathrooms,
+        garage: property.garage,
+        carport: property.carport,
+        furnishing: property.furnishing || 'None',
+        clean_kitchen: property.clean_kitchen || 0,
+        service_kitchen: property.service_kitchen || 0,
+        electricity: property.electricity || 0,
+        swimming_pool: property.swimming_pool || 0,
+        security_post: property.security_post || 0,
+        price: property.price
+      };
+
+      Object.entries(fields).forEach(([key, value]) => {
+        const field = propertyForm.elements.namedItem(key);
+        if (field) {
+          field.value = value;
+        }
+      });
+
+      currentEditId = property.id;
+      formTitle.textContent = `Edit Property ${property.property_code || '#' + property.id}`;
+      submitBtn.textContent = 'Update Property';
+      cancelEditBtn.classList.remove('hidden');
+      setNotice('');
+      propertyForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
     function formatCurrency(value) {
       return new Intl.NumberFormat('en-US', {
@@ -137,6 +218,22 @@
       return features.length ? features.join(', ') : '-';
     }
 
+    function getFilteredProperties() {
+      const query = searchInput.value.trim().toLowerCase();
+      const buildingValue = buildingFilter.value;
+
+      return allProperties.filter((property) => {
+        const matchesSearch = !query || [
+          property.property_name || '',
+          property.property_code || '',
+          property.building || ''
+        ].join(' ').toLowerCase().includes(query);
+
+        const matchesBuilding = buildingValue === 'all' || property.building === buildingValue;
+        return matchesSearch && matchesBuilding;
+      });
+    }
+
     function renderStats(properties) {
       const total = properties.length;
       const totalValue = properties.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
@@ -153,7 +250,7 @@
       if (!properties.length) {
         propertyTableBody.innerHTML = `
           <tr>
-            <td colspan="9" class="empty">No properties found. Add your first property above.</td>
+            <td colspan="9" class="empty">No matching properties found. Try a different search or filter.</td>
           </tr>
         `;
         return;
@@ -170,7 +267,10 @@
           <td>${formatCurrency(p.price)}</td>
           <td>${collectFeatures(p)}</td>
           <td>
-            <button class="danger" onclick="deleteProperty(${p.id})">Delete</button>
+            <div class="row-actions">
+              <button type="button" class="secondary" onclick="editProperty(${p.id})">Edit</button>
+              <button type="button" class="danger" onclick="deleteProperty(${p.id})">Delete</button>
+            </div>
           </td>
         </tr>
       `).join('');
@@ -181,11 +281,19 @@
         const response = await fetch(API_BASE);
         if (!response.ok) throw new Error('Failed to load properties');
         const data = await response.json();
-        renderStats(data);
-        renderTable(data);
+        allProperties = data;
+        const filtered = getFilteredProperties();
+        renderStats(filtered);
+        renderTable(filtered);
       } catch (error) {
         alert('Error loading properties: ' + error.message);
       }
+    }
+
+    function refreshFilteredTable() {
+      const filtered = getFilteredProperties();
+      renderStats(filtered);
+      renderTable(filtered);
     }
 
     async function deleteProperty(id) {
@@ -198,10 +306,21 @@
           const err = await response.json();
           throw new Error(err.error || 'Failed to delete property');
         }
+
+        if (currentEditId === id) {
+          resetFormState();
+        }
+
         await loadProperties();
       } catch (error) {
         alert('Error deleting property: ' + error.message);
       }
+    }
+
+    async function editProperty(id) {
+      const property = allProperties.find((item) => item.id === id);
+      if (!property) return;
+      fillForm(property);
     }
 
     propertyForm.addEventListener('submit', async (event) => {
@@ -227,26 +346,38 @@
       };
 
       try {
-        const response = await fetch(API_BASE, {
-          method: 'POST',
+        const endpoint = currentEditId ? `${API_BASE}/${currentEditId}` : API_BASE;
+        const method = currentEditId ? 'PUT' : 'POST';
+
+        const response = await fetch(endpoint, {
+          method,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
           const err = await response.json();
-          throw new Error(err.error || 'Failed to create property');
+          throw new Error(err.error || (currentEditId ? 'Failed to update property' : 'Failed to create property'));
         }
 
-        propertyForm.reset();
+        const successText = currentEditId ? 'Property updated successfully.' : 'Property created successfully.';
+        setNotice(successText);
+        resetFormState();
         await loadProperties();
       } catch (error) {
-        alert('Error creating property: ' + error.message);
+        setNotice(error.message, true);
       }
     });
 
+    cancelEditBtn.addEventListener('click', resetFormState);
     refreshBtn.addEventListener('click', loadProperties);
+    searchInput.addEventListener('input', refreshFilteredTable);
+    buildingFilter.addEventListener('change', refreshFilteredTable);
 
+    window.editProperty = editProperty;
+    window.deleteProperty = deleteProperty;
+
+    resetFormState();
     loadProperties();
   </script>
 </body>

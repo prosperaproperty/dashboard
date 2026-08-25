@@ -52,6 +52,14 @@ body {
   box-shadow: var(--shadow);
 }
 
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
 .form-card h2,
 .card h2 {
   margin-bottom: 14px;
@@ -106,6 +114,15 @@ button:hover {
   background: var(--accent-dark);
 }
 
+button.secondary {
+  background: #e5e7eb;
+  color: var(--text);
+}
+
+button.secondary:hover {
+  background: #d1d5db;
+}
+
 button.danger {
   background: var(--danger);
 }
@@ -114,11 +131,53 @@ button.danger:hover {
   filter: brightness(0.95);
 }
 
+button.hidden {
+  display: none;
+}
+
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 18px;
+}
+
+.toolbar input,
+.toolbar select {
+  flex: 1;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.form-actions {
+  margin-top: 16px;
+}
+
+.notice {
+  min-height: 20px;
+  margin-top: 12px;
+  color: #166534;
+  font-weight: 600;
+}
+
+.notice.error {
+  color: #b91c1c;
 }
 
 .stats {

@@ -56,6 +56,7 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button id="themeToggleBtn" type="button" class="secondary" aria-label="Toggle dark mode">Dark Mode</button>
         <button id="manageUsersBtnTop" type="button" class="secondary">Manage Users</button>
         <button id="logoutBtn" type="button" class="secondary">Logout</button>
       </div>
@@ -192,6 +193,8 @@
           <option value="Sale">Sale</option>
           <option value="Rent">Rent</option>
         </select>
+        <button id="exportCsvBtn" type="button" class="secondary export-btn">Export CSV</button>
+        <button id="exportJsonBtn" type="button" class="secondary export-btn">Export JSON</button>
       </div>
 
       <div id="stats" class="stats"></div>
@@ -232,6 +235,9 @@
     const propertyForm = document.getElementById('propertyForm');
     const propertyTableBody = document.getElementById('propertyTableBody');
     const refreshBtn = document.getElementById('refreshBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const exportJsonBtn = document.getElementById('exportJsonBtn');
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
     const stats = document.getElementById('stats');
     const searchInput = document.getElementById('searchInput');
     const buildingFilter = document.getElementById('buildingFilter');
@@ -775,12 +781,68 @@
       const total = properties.length;
       const totalValue = properties.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
       const avgValue = total ? totalValue / total : 0;
+      const forSale = properties.filter((p) => (p.listing_type || 'Sale') === 'Sale').length;
+      const forRent = properties.filter((p) => (p.listing_type || 'Sale') === 'Rent').length;
 
       stats.innerHTML = `
         <div class="stat-item"><strong>${total}</strong><span>Total Properties</span></div>
         <div class="stat-item"><strong>${formatCurrency(totalValue)}</strong><span>Total Portfolio</span></div>
         <div class="stat-item"><strong>${formatCurrency(avgValue)}</strong><span>Average Price</span></div>
+        <div class="stat-item"><strong>${forSale}</strong><span>For Sale</span></div>
+        <div class="stat-item"><strong>${forRent}</strong><span>For Rent</span></div>
       `;
+    }
+
+    function downloadReportFile(filename, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportPropertiesReport(format = 'csv') {
+      const rows = getFilteredProperties();
+      if (!rows.length) {
+        alert('No properties match the current view to export.');
+        return;
+      }
+
+      const columns = [
+        'property_code',
+        'property_name',
+        'building',
+        'listing_type',
+        'land_size',
+        'building_size',
+        'bedrooms',
+        'bathrooms',
+        'garage',
+        'carport',
+        'furnishing',
+        'price'
+      ];
+
+      if (format === 'json') {
+        const payload = rows.map((property) => Object.fromEntries(columns.map((key) => [key, property[key] ?? ''])));
+        downloadReportFile('property-report.json', JSON.stringify(payload, null, 2), 'application/json');
+        return;
+      }
+
+      const escapeCsvValue = (value) => {
+        const text = String(value ?? '').replace(/\r?\n/g, ' ');
+        return /[",]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+
+      const csvRows = [
+        columns.join(','),
+        ...rows.map((property) => columns.map((key) => escapeCsvValue(property[key] ?? '')).join(','))
+      ];
+      downloadReportFile('property-report.csv', csvRows.join('\n'), 'text/csv;charset=utf-8;');
     }
 
     function renderTable(properties) {
@@ -950,6 +1012,8 @@
 
     cancelEditBtn.addEventListener('click', resetFormState);
     refreshBtn.addEventListener('click', loadProperties);
+    exportCsvBtn.addEventListener('click', () => exportPropertiesReport('csv'));
+    exportJsonBtn.addEventListener('click', () => exportPropertiesReport('json'));
     searchInput.addEventListener('input', refreshFilteredTable);
     buildingFilter.addEventListener('change', refreshFilteredTable);
     listingTypeFilter.addEventListener('change', refreshFilteredTable);
@@ -1068,6 +1132,26 @@
     const loginError = document.getElementById('loginError');
     const logoutBtn = document.getElementById('logoutBtn');
     const AUTH_STORAGE_KEY = 'prosperaDashboardAuth';
+    const THEME_STORAGE_KEY = 'prosperaTheme';
+
+    function applyTheme(theme) {
+      const nextTheme = theme === 'dark' ? 'dark' : 'light';
+      document.body.dataset.theme = nextTheme;
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      if (themeToggleBtn) {
+        themeToggleBtn.textContent = nextTheme === 'dark' ? 'Light Mode' : 'Dark Mode';
+      }
+    }
+
+    function initializeTheme() {
+      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || 'light';
+      applyTheme(savedTheme);
+    }
+
+    themeToggleBtn.addEventListener('click', () => {
+      const nextTheme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(nextTheme);
+    });
 
     function setAuthenticated(flag) {
       try {
@@ -1131,6 +1215,8 @@
       userManagementPanel.classList.add('hidden');
       showLogin();
     });
+
+    initializeTheme();
 
     if (isAuthenticated()) {
       showDashboard();

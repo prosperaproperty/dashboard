@@ -65,6 +65,35 @@ function initializeDatabase() {
         return;
       }
 
+      db.run(`
+        CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          username TEXT NOT NULL UNIQUE,
+          password TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (userErr) => {
+        if (userErr) {
+          console.error('Error creating users table:', userErr.message);
+          return;
+        }
+
+        db.get('SELECT id FROM users WHERE username = ?', ['admin'], (adminErr, existingUser) => {
+          if (adminErr) {
+            console.error('Error checking admin user:', adminErr.message);
+            return;
+          }
+
+          if (!existingUser) {
+            db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['admin', 'Prospera'], (insertErr) => {
+              if (insertErr) {
+                console.error('Error creating default admin user:', insertErr.message);
+              }
+            });
+          }
+        });
+      });
+
       db.all('PRAGMA table_info(properties)', (piErr, cols) => {
         if (!piErr && Array.isArray(cols)) {
           if (!cols.find(c => c.name === 'property_code')) {

@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const { initializeDatabase } = require('./db');
 const propertyRoutes = require('./routes/properties');
+const userRoutes = require('./routes/users');
 
 // Load environment variables
 dotenv.config();
@@ -23,6 +24,7 @@ initializeDatabase();
 
 // Routes
 app.use('/api/properties', propertyRoutes);
+app.use('/api/users', userRoutes);
 
 // Health check
 app.get('/', (req, res) => {

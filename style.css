@@ -97,6 +97,80 @@ body {
   font-weight: 600;
 }
 
+.login-actions {
+  margin-top: 16px;
+}
+
+.login-actions button {
+  width: 100%;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-management-panel {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #f9fafb;
+  padding: 16px;
+  text-align: left;
+}
+
+.user-management-panel h2 {
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+}
+
+.user-management-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.user-item span {
+  font-weight: 600;
+}
+
+.user-empty,
+.user-message {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.user-message.error {
+  color: var(--danger);
+}
+
+.user-management-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+}
+
+.user-management-form input {
+  width: 100%;
+}
+
+.user-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .app-shell {
   display: block;
 }

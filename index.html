@@ -27,6 +27,21 @@
         <button type="submit">Login</button>
       </form>
 
+      <div class="login-actions">
+        <button id="manageUsersBtn" type="button" class="secondary">Manage Users</button>
+      </div>
+
+      <div id="userManagementPanel" class="user-management-panel hidden">
+        <h2>Manage Users</h2>
+        <div id="userManagementList" class="user-management-list"></div>
+        <form id="userManagementForm" class="user-management-form">
+          <input id="newUsername" name="newUsername" type="text" placeholder="New username" required />
+          <input id="newPassword" name="newPassword" type="password" placeholder="Password" required />
+          <button type="submit">Add User</button>
+        </form>
+        <div id="userManagementMessage" class="user-message" aria-live="polite"></div>
+      </div>
+
       <div id="loginError" class="login-error" aria-live="polite"></div>
     </div>
   </div>
@@ -40,7 +55,10 @@
           <small>Property Dashboard</small>
         </div>
       </div>
-      <button id="logoutBtn" type="button" class="secondary">Logout</button>
+      <div class="topbar-actions">
+        <button id="manageUsersBtnTop" type="button" class="secondary">Manage Users</button>
+        <button id="logoutBtn" type="button" class="secondary">Logout</button>
+      </div>
     </header>
     <div class="container">
     <header class="header">
@@ -209,6 +227,7 @@
     const API_BASE = configuredApiBase.endsWith('/api/properties')
       ? configuredApiBase
       : `${configuredApiBase.replace(/\/$/, '')}/api/properties`;
+    const USERS_API_BASE = `${isLocalHost ? 'http://localhost:3001' : 'https://property-dashboard-api-production.up.railway.app'}/api/users`;
 
     const propertyForm = document.getElementById('propertyForm');
     const propertyTableBody = document.getElementById('propertyTableBody');
@@ -225,6 +244,12 @@
     const submitBtn = document.getElementById('submitBtn');
     const cancelEditBtn = document.getElementById('cancelEditBtn');
     const formNotice = document.getElementById('formNotice');
+    const manageUsersBtn = document.getElementById('manageUsersBtn');
+    const manageUsersBtnTop = document.getElementById('manageUsersBtnTop');
+    const userManagementPanel = document.getElementById('userManagementPanel');
+    const userManagementList = document.getElementById('userManagementList');
+    const userManagementForm = document.getElementById('userManagementForm');
+    const userManagementMessage = document.getElementById('userManagementMessage');
 
     let allProperties = [];
     let currentEditId = null;
@@ -947,6 +972,96 @@
     window.editProperty = editProperty;
     window.deleteProperty = deleteProperty;
 
+    function setUserManagementMessage(message, isError = false) {
+      userManagementMessage.textContent = message || '';
+      userManagementMessage.classList.toggle('error', Boolean(isError));
+    }
+
+    async function loadUsers() {
+      try {
+        const response = await fetch(USERS_API_BASE);
+        if (!response.ok) {
+          throw new Error('Unable to load users');
+        }
+
+        const users = await response.json();
+        userManagementList.innerHTML = users.length
+          ? users.map((user) => `
+              <div class="user-item">
+                <span>${user.username}</span>
+                <button type="button" class="danger user-delete" data-user-id="${user.id}" ${user.username === 'admin' ? 'disabled' : ''}>Delete</button>
+              </div>
+            `).join('')
+          : '<div class="user-empty">No users found.</div>';
+        return users;
+      } catch (error) {
+        userManagementList.innerHTML = '<div class="user-empty">Unable to load users.</div>';
+        console.warn('Unable to load users:', error.message);
+        return [];
+      }
+    }
+
+    function toggleUserManagement(show) {
+      userManagementPanel.classList.toggle('hidden', !show);
+      if (show) {
+        loadUsers();
+      }
+    }
+
+    manageUsersBtn.addEventListener('click', () => toggleUserManagement(userManagementPanel.classList.contains('hidden')));
+    manageUsersBtnTop.addEventListener('click', () => toggleUserManagement(userManagementPanel.classList.contains('hidden')));
+
+    userManagementForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const username = document.getElementById('newUsername').value.trim();
+      const password = document.getElementById('newPassword').value.trim();
+
+      if (!username || !password) {
+        setUserManagementMessage('Username and password are required.', true);
+        return;
+      }
+
+      try {
+        const response = await fetch(USERS_API_BASE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || 'Unable to create user');
+        }
+
+        userManagementForm.reset();
+        setUserManagementMessage(`User ${payload.username} created successfully.`);
+        await loadUsers();
+      } catch (error) {
+        setUserManagementMessage(error.message, true);
+      }
+    });
+
+    userManagementList.addEventListener('click', async (event) => {
+      const deleteButton = event.target.closest('.user-delete');
+      if (!deleteButton) {
+        return;
+      }
+
+      const userId = deleteButton.dataset.userId;
+      try {
+        const response = await fetch(`${USERS_API_BASE}/${userId}`, { method: 'DELETE' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || 'Unable to delete user');
+        }
+
+        setUserManagementMessage('User deleted successfully.');
+        await loadUsers();
+      } catch (error) {
+        setUserManagementMessage(error.message, true);
+      }
+    });
+
     const loginView = document.getElementById('loginView');
     const appShell = document.getElementById('appShell');
     const loginForm = document.getElementById('loginForm');
@@ -973,34 +1088,47 @@
     function showDashboard() {
       appShell.classList.remove('hidden');
       loginView.classList.add('hidden');
+      userManagementPanel.classList.add('hidden');
       loadProperties();
     }
 
     function showLogin() {
       loginView.classList.remove('hidden');
       appShell.classList.add('hidden');
+      userManagementPanel.classList.add('hidden');
       loginError.textContent = '';
       loginForm.reset();
     }
 
-    loginForm.addEventListener('submit', (event) => {
+    loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value.trim();
 
-      if (username === 'admin' && password === 'Prospera') {
+      try {
+        const response = await fetch(`${USERS_API_BASE}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || 'Invalid username or password.');
+        }
+
         setAuthenticated(true);
         loginError.textContent = '';
         showDashboard();
-        return;
+      } catch (error) {
+        loginError.textContent = error.message;
+        setAuthenticated(false);
       }
-
-      loginError.textContent = 'Invalid username or password.';
-      setAuthenticated(false);
     });
 
     logoutBtn.addEventListener('click', () => {
       setAuthenticated(false);
+      userManagementPanel.classList.add('hidden');
       showLogin();
     });
 

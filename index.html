@@ -27,21 +27,6 @@
         <button type="submit">Login</button>
       </form>
 
-      <div class="login-actions">
-        <button id="manageUsersBtn" type="button" class="secondary">Manage Users</button>
-      </div>
-
-      <div id="userManagementPanel" class="user-management-panel hidden">
-        <h2>Manage Users</h2>
-        <div id="userManagementList" class="user-management-list"></div>
-        <form id="userManagementForm" class="user-management-form">
-          <input id="newUsername" name="newUsername" type="text" placeholder="New username" required />
-          <input id="newPassword" name="newPassword" type="password" placeholder="Password" required />
-          <button type="submit">Add User</button>
-        </form>
-        <div id="userManagementMessage" class="user-message" aria-live="polite"></div>
-      </div>
-
       <div id="loginError" class="login-error" aria-live="polite"></div>
     </div>
   </div>
@@ -66,6 +51,19 @@
       <h1>Property Dashboard</h1>
       <p>Manage, track, and analyze your property listings</p>
     </header>
+
+    <section id="userManagementPanel" class="card user-management-panel hidden">
+      <div class="section-header">
+        <h2>Manage Users</h2>
+      </div>
+      <div id="userManagementList" class="user-management-list"></div>
+      <form id="userManagementForm" class="user-management-form">
+        <input id="newUsername" name="newUsername" type="text" placeholder="New username" required />
+        <input id="newPassword" name="newPassword" type="password" placeholder="Password" required />
+        <button type="submit">Add User</button>
+      </form>
+      <div id="userManagementMessage" class="user-message" aria-live="polite"></div>
+    </section>
 
     <section class="card dashboard-summary-card">
       <div class="section-header">
@@ -1141,8 +1139,12 @@
       }
     }
 
-    manageUsersBtn.addEventListener('click', () => toggleUserManagement(userManagementPanel.classList.contains('hidden')));
-    manageUsersBtnTop.addEventListener('click', () => toggleUserManagement(userManagementPanel.classList.contains('hidden')));
+    if (manageUsersBtn) {
+      manageUsersBtn.addEventListener('click', () => toggleUserManagement(userManagementPanel.classList.contains('hidden')));
+    }
+    if (manageUsersBtnTop) {
+      manageUsersBtnTop.addEventListener('click', () => toggleUserManagement(userManagementPanel.classList.contains('hidden')));
+    }
 
     userManagementForm.addEventListener('submit', async (event) => {
       event.preventDefault();

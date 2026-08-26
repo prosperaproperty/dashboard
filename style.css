@@ -420,10 +420,29 @@ tr:hover td {
   object-fit: cover;
 }
 
-.photo-delete {
+.photo-actions {
   position: absolute;
   right: 6px;
   bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.photo-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.8);
+  color: #fff;
+  text-decoration: none;
+  padding: 6px 8px;
+  font-size: 0.7rem;
+  border-radius: 8px;
+  line-height: 1;
+}
+
+.photo-delete {
   padding: 6px 8px;
   font-size: 0.7rem;
   border-radius: 8px;

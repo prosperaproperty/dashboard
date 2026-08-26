@@ -137,7 +137,7 @@
           <button id="togglePhotoManagerBtn" type="button" class="secondary">Collapse</button>
         </div>
       </div>
-      <p class="photo-helper">Upload up to 5 photos per room. Rooms are generated automatically from the values entered for bedrooms, bathrooms, and other room items.</p>
+      <p class="photo-helper">Upload up to 5 photos per room. Images are saved automatically and can be downloaded anytime from the photo gallery.</p>
       <div id="photoManagementBody" class="photo-management-body"></div>
     </section>
 
@@ -460,12 +460,18 @@
         const roomPhotos = Array.isArray(state[room.id]) ? state[room.id] : [];
         const slotsLeft = 5 - roomPhotos.length;
         const thumbnails = roomPhotos.length
-          ? roomPhotos.map((photo, photoIndex) => `
-              <div class="photo-thumb">
-                <img src="${photo}" alt="${room.label} photo ${photoIndex + 1}" />
-                <button type="button" class="danger photo-delete" data-room-id="${room.id}" data-photo-index="${photoIndex}">Delete</button>
-              </div>
-            `).join('')
+          ? roomPhotos.map((photo, photoIndex) => {
+              const safeName = `${room.label.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'photo'}-${photoIndex + 1}.png`;
+              return `
+                <div class="photo-thumb">
+                  <img src="${photo}" alt="${room.label} photo ${photoIndex + 1}" />
+                  <div class="photo-actions">
+                    <a class="photo-download" href="${photo}" download="${safeName}" target="_blank" rel="noopener">Download</a>
+                    <button type="button" class="danger photo-delete" data-room-id="${room.id}" data-photo-index="${photoIndex}">Delete</button>
+                  </div>
+                </div>
+              `;
+            }).join('')
           : '<div class="photo-empty-inline">No photos yet</div>';
 
         return `

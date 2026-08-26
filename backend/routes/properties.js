@@ -1,12 +1,37 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db');
+const { db, normalizePropertyCodes } = require('../db');
+
+function normalizePhotosValue(value) {
+  if (value === undefined || value === null) {
+    return '{}';
+  }
+
+  if (typeof value === 'string') {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch (error) {
+      try {
+        return JSON.stringify(value);
+      } catch (stringifyErr) {
+        return '{}';
+      }
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch (error) {
+    return '{}';
+  }
+}
 
 // GET /api/properties - Get all properties
 router.get('/', (req, res) => {
   db.all(`
-    SELECT * FROM properties 
-    ORDER BY created_at DESC
+    SELECT * FROM properties
+    ORDER BY id ASC
   `, (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -30,14 +55,13 @@ router.get('/:id', (req, res) => {
 });
 
 // POST /api/properties - Create new property
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const allowedFields = [
     'land_size', 'building_size', 'building', 'property_name', 'bedrooms', 'bathrooms',
     'clean_kitchen', 'service_kitchen', 'electricity', 'swimming_pool',
-    'garage', 'carport', 'security_post', 'furnishing', 'price'
+    'garage', 'carport', 'security_post', 'furnishing', 'listing_type', 'price', 'photos'
   ];
 
-  // Validate required fields
   const requiredFields = ['land_size', 'building_size', 'building', 'bedrooms', 'bathrooms', 'price'];
   for (const field of requiredFields) {
     if (req.body[field] === undefined || req.body[field] === '') {
@@ -45,11 +69,12 @@ router.post('/', (req, res) => {
     }
   }
 
-  // Filter and sanitize input
   const data = {};
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) {
-      if (['land_size', 'building_size', 'clean_kitchen', 'service_kitchen', 'electricity', 'swimming_pool', 'security_post', 'price'].includes(field)) {
+      if (field === 'photos') {
+        data[field] = normalizePhotosValue(req.body[field]);
+      } else if (['land_size', 'building_size', 'clean_kitchen', 'service_kitchen', 'electricity', 'swimming_pool', 'security_post', 'price'].includes(field)) {
         data[field] = Number(req.body[field]);
         if (isNaN(data[field])) {
           return res.status(400).json({ error: `Invalid numeric value for ${field}` });
@@ -66,36 +91,40 @@ router.post('/', (req, res) => {
     INSERT INTO properties 
     (land_size, building_size, building, property_name, bedrooms, bathrooms,
      clean_kitchen, service_kitchen, electricity, swimming_pool,
-     garage, carport, security_post, furnishing, price)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     garage, carport, security_post, furnishing, listing_type, price, photos)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   stmt.run([
     data.land_size, data.building_size, data.building, data.property_name || null, data.bedrooms, data.bathrooms,
     data.clean_kitchen || 0, data.service_kitchen || 0, data.electricity || 0, data.swimming_pool || 0,
-    data.garage || 0, data.carport || 0, data.security_post || 0, data.furnishing || 'None', data.price
-  ], function(err) {
+    data.garage || 0, data.carport || 0, data.security_post || 0, data.furnishing || 'None', data.listing_type || 'Sale', data.price, data.photos || '{}'
+  ], async function(err) {
+    stmt.finalize();
     if (err) {
       return res.status(500).json({ error: err.message });
     }
-    // Generate property_code after insert: P + YYYYMMDD + zero-padded id
+
     try {
-      const date = new Date().toISOString().slice(0,10).replace(/-/g, '');
-      const code = `P${date}${String(this.lastID).padStart(4, '0')}`;
-      db.run('UPDATE properties SET property_code = ? WHERE id = ?', [code, this.lastID], (updErr) => {
-        if (updErr) {
-          console.error('Error setting property_code:', updErr.message);
-          // Still respond with id even if property_code update failed
-          return res.json({ id: this.lastID, message: 'Property created (property_code update failed)' });
+      await normalizePropertyCodes();
+      db.get('SELECT property_code, listing_type, photos FROM properties WHERE id = ?', [this.lastID], (codeErr, row) => {
+        if (codeErr) {
+          console.error('Error reading property code after create:', codeErr.message);
+          return res.json({ id: this.lastID, listing_type: data.listing_type || 'Sale', photos: data.photos || '{}', message: 'Property created successfully' });
         }
-        res.json({ id: this.lastID, property_code: code, message: 'Property created successfully' });
+        res.json({
+          id: this.lastID,
+          property_code: row && row.property_code ? row.property_code : `Pros-${this.lastID}`,
+          listing_type: row && row.listing_type ? row.listing_type : (data.listing_type || 'Sale'),
+          photos: row && row.photos ? row.photos : (data.photos || '{}'),
+          message: 'Property created successfully'
+        });
       });
-    } catch (e) {
-      // Fallback: respond with id
-      res.json({ id: this.lastID, message: 'Property created successfully' });
+    } catch (normalizeErr) {
+      console.error('Error normalizing property codes after create:', normalizeErr.message);
+      return res.status(500).json({ error: 'Unable to assign property code' });
     }
   });
-  stmt.finalize();
 });
 
 // PUT /api/properties/:id - Update property
@@ -104,7 +133,7 @@ router.put('/:id', (req, res) => {
   const allowedFields = [
     'land_size', 'building_size', 'building', 'property_name', 'bedrooms', 'bathrooms',
     'clean_kitchen', 'service_kitchen', 'electricity', 'swimming_pool',
-    'garage', 'carport', 'security_post', 'furnishing', 'price'
+    'garage', 'carport', 'security_post', 'furnishing', 'listing_type', 'price', 'photos'
   ];
 
   // Reject empty updates
@@ -116,7 +145,9 @@ router.put('/:id', (req, res) => {
   const updates = {};
   for (const field of allowedFields) {
     if (req.body[field] !== undefined) {
-      if (['land_size', 'building_size', 'clean_kitchen', 'service_kitchen', 'electricity', 'swimming_pool', 'security_post', 'price'].includes(field)) {
+      if (field === 'photos') {
+        updates[field] = normalizePhotosValue(req.body[field]);
+      } else if (['land_size', 'building_size', 'clean_kitchen', 'service_kitchen', 'electricity', 'swimming_pool', 'security_post', 'price'].includes(field)) {
         const num = Number(req.body[field]);
         if (isNaN(num)) {
           return res.status(400).json({ error: `Invalid numeric value for ${field}` });
@@ -148,21 +179,36 @@ router.put('/:id', (req, res) => {
     if (this.changes === 0) {
       return res.status(404).json({ error: 'Property not found' });
     }
-    res.json({ message: 'Property updated successfully' });
+    db.get('SELECT photos FROM properties WHERE id = ?', [id], (photosErr, row) => {
+      if (photosErr) {
+        return res.json({ message: 'Property updated successfully' });
+      }
+      res.json({
+        message: 'Property updated successfully',
+        photos: row && row.photos ? row.photos : '{}'
+      });
+    });
   });
 });
 
 // DELETE /api/properties/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   const { id } = req.params;
-  db.run('DELETE FROM properties WHERE id = ?', [id], function(err) {
+  db.run('DELETE FROM properties WHERE id = ?', [id], async function(err) {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     if (this.changes === 0) {
       return res.status(404).json({ error: 'Property not found' });
     }
-    res.json({ message: 'Property deleted successfully' });
+
+    try {
+      await normalizePropertyCodes();
+      res.json({ message: 'Property deleted successfully' });
+    } catch (normalizeErr) {
+      console.error('Error normalizing property codes after delete:', normalizeErr.message);
+      res.status(500).json({ error: 'Property deleted, but code re-sequencing failed' });
+    }
   });
 });
 

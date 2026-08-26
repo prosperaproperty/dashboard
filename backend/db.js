@@ -1,11 +1,38 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
 // Database file path
 const dbPath = process.env.DATABASE_URL || (process.env.NODE_ENV === 'test' ? ':memory:' : path.join(__dirname, 'property_dashboard.db'));
 const db = new sqlite3.Database(dbPath);
 
-const fs = require('fs');
+function normalizePropertyCodes() {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT id FROM properties ORDER BY id ASC', (err, rows) => {
+      if (err) {
+        return reject(err);
+      }
+
+      if (!rows.length) {
+        return resolve();
+      }
+
+      let remaining = rows.length;
+      rows.forEach((row, index) => {
+        const nextCode = `Pros-${index + 1}`;
+        db.run('UPDATE properties SET property_code = ? WHERE id = ?', [nextCode, row.id], (updateErr) => {
+          if (updateErr) {
+            return reject(updateErr);
+          }
+          remaining -= 1;
+          if (remaining === 0) {
+            resolve();
+          }
+        });
+      });
+    });
+  });
+}
 
 function initializeDatabase() {
   db.serialize(() => {
@@ -26,8 +53,10 @@ function initializeDatabase() {
         carport INTEGER NOT NULL DEFAULT 0,
         security_post REAL NOT NULL DEFAULT 0,
         furnishing TEXT NOT NULL DEFAULT 'None',
+        listing_type TEXT NOT NULL DEFAULT 'Sale',
         price REAL NOT NULL,
         property_code TEXT,
+        photos TEXT DEFAULT '{}',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `, (err) => {
@@ -36,21 +65,49 @@ function initializeDatabase() {
         return;
       }
 
-      // Ensure property_code column exists for older databases (safe to run repeatedly)
-      db.all("PRAGMA table_info(properties)", (piErr, cols) => {
-        if (!piErr && Array.isArray(cols) && !cols.find(c => c.name === 'property_code')) {
-          db.run("ALTER TABLE properties ADD COLUMN property_code TEXT", (alterErr) => {
-            if (alterErr) console.error('Error adding property_code column:', alterErr.message);
-          });
+      db.all('PRAGMA table_info(properties)', (piErr, cols) => {
+        if (!piErr && Array.isArray(cols)) {
+          if (!cols.find(c => c.name === 'property_code')) {
+            db.run('ALTER TABLE properties ADD COLUMN property_code TEXT', (alterErr) => {
+              if (alterErr) {
+                console.error('Error adding property_code column:', alterErr.message);
+                return;
+              }
+              normalizePropertyCodes().catch((codeErr) => {
+                console.error('Error normalizing property codes:', codeErr.message);
+              });
+            });
+          }
+
+          if (!cols.find(c => c.name === 'listing_type')) {
+            db.run("ALTER TABLE properties ADD COLUMN listing_type TEXT NOT NULL DEFAULT 'Sale'", (alterErr) => {
+              if (alterErr) {
+                console.error('Error adding listing_type column:', alterErr.message);
+              }
+              normalizePropertyCodes().catch((codeErr) => {
+                console.error('Error normalizing property codes:', codeErr.message);
+              });
+            });
+          }
+
+          if (!cols.find(c => c.name === 'photos')) {
+            db.run("ALTER TABLE properties ADD COLUMN photos TEXT DEFAULT '{}'", (alterErr) => {
+              if (alterErr) {
+                console.error('Error adding photos column:', alterErr.message);
+              }
+            });
+          }
         }
+
+        normalizePropertyCodes().catch((codeErr) => {
+          console.error('Error normalizing property codes:', codeErr.message);
+        });
       });
 
       console.log('✓ Database initialized successfully');
 
-      // Don't auto-seed during tests to avoid async logging after test runner finishes
       if (process.env.NODE_ENV === 'test') return;
 
-      // Seed initial data from payload.json if table is empty
       const payloadPath = path.join(__dirname, 'payload.json');
       let payload = null;
       try {
@@ -87,11 +144,8 @@ function initializeDatabase() {
             if (insertErr) {
               console.error('Error inserting initial payload:', insertErr.message);
             } else {
-              // After insert, set property_code to P + YYYYMMDD + zero-padded id (e.g., P20260825-0001)
-              const date = new Date().toISOString().slice(0,10).replace(/-/g, '');
-              const code = `P${date}${String(this.lastID).padStart(4, '0')}`;
-              db.run('UPDATE properties SET property_code = ? WHERE id = ?', [code, this.lastID], (updErr) => {
-                if (updErr) console.error('Error setting property_code for seed:', updErr.message);
+              normalizePropertyCodes().catch((codeErr) => {
+                console.error('Error normalizing seeded property codes:', codeErr.message);
               });
               console.log(`✓ Inserted initial property with id ${this.lastID}`);
             }
@@ -104,4 +158,4 @@ function initializeDatabase() {
   });
 }
 
-module.exports = { db, initializeDatabase };
+module.exports = { db, initializeDatabase, normalizePropertyCodes };

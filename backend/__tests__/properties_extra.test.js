@@ -95,6 +95,31 @@ describe('Properties API extra', () => {
     expect(new Set(list.body.map(item => item.property_code)).size).toBe(list.body.length);
   });
 
+  test('POST /api/properties creates dynamic room records and electricity slot', async () => {
+    const res = await request(app).post('/api/properties').send({
+      land_size: 200,
+      building_size: 150,
+      building: 'Townhouse',
+      property_name: 'Delta',
+      bedrooms: 2,
+      bathrooms: 1,
+      clean_kitchen: 1,
+      service_kitchen: 1,
+      electricity: 1,
+      listing_type: 'Sale',
+      price: 400000
+    }).set('Accept', 'application/json');
+
+    expect(res.status).toBe(200);
+    const detail = await request(app).get(`/api/properties/${res.body.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.rooms).toEqual(expect.arrayContaining([
+      expect.objectContaining({ room_type: 'bedrooms', room_number: 1 }),
+      expect.objectContaining({ room_type: 'bedrooms', room_number: 2 }),
+      expect.objectContaining({ room_type: 'electricity', room_number: 1 })
+    ]));
+  });
+
   test('POST /api/properties missing required field returns 400', async () => {
     const payload = {
       land_size: 50,

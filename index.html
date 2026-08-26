@@ -67,6 +67,13 @@
       <p>Manage, track, and analyze your property listings</p>
     </header>
 
+    <section class="card dashboard-summary-card">
+      <div class="section-header">
+        <h2>Dashboard Overview</h2>
+      </div>
+      <div id="dashboardSummary" class="kpi-grid"></div>
+    </section>
+
     <section class="card form-card">
       <div class="form-header">
         <h2 id="formTitle">Add New Property</h2>
@@ -238,6 +245,7 @@
     const exportCsvBtn = document.getElementById('exportCsvBtn');
     const exportJsonBtn = document.getElementById('exportJsonBtn');
     const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const dashboardSummary = document.getElementById('dashboardSummary');
     const stats = document.getElementById('stats');
     const searchInput = document.getElementById('searchInput');
     const buildingFilter = document.getElementById('buildingFilter');
@@ -679,6 +687,53 @@
         }));
     }
 
+    function getPropertyPhotoSummary(property) {
+      const groups = buildPhotoGroups(property.photos);
+      const totalPhotos = groups.reduce((sum, group) => sum + group.photos.length, 0);
+      const roomSlots = [
+        Number(property.bedrooms || 0),
+        Number(property.bathrooms || 0),
+        Number(property.clean_kitchen || 0),
+        Number(property.service_kitchen || 0)
+      ].reduce((sum, value) => sum + Math.max(value, 0), 0);
+      const electricitySlots = Number(property.electricity || 0) > 0 ? 1 : 0;
+      const potentialSlots = roomSlots + electricitySlots;
+      const percent = potentialSlots > 0 ? Math.min(100, Math.round((totalPhotos / (potentialSlots * 5)) * 100)) : 0;
+      const status = percent >= 80 ? 'Complete' : percent >= 45 ? 'In Progress' : 'Incomplete';
+      return { groups, totalPhotos, potentialSlots, percent, status };
+    }
+
+    function renderDashboardSummary(properties) {
+      const total = properties.length;
+      const totalPhotos = properties.reduce((sum, property) => sum + getPropertyPhotoSummary(property).totalPhotos, 0);
+      const complete = properties.filter((property) => getPropertyPhotoSummary(property).status === 'Complete').length;
+      const inProgress = properties.filter((property) => getPropertyPhotoSummary(property).status === 'In Progress').length;
+      const incomplete = properties.filter((property) => getPropertyPhotoSummary(property).status === 'Incomplete').length;
+
+      dashboardSummary.innerHTML = `
+        <article class="kpi-item">
+          <span class="kpi-label">Total Properties</span>
+          <strong>${total}</strong>
+        </article>
+        <article class="kpi-item">
+          <span class="kpi-label">Completed</span>
+          <strong>${complete}</strong>
+        </article>
+        <article class="kpi-item">
+          <span class="kpi-label">In Progress</span>
+          <strong>${inProgress}</strong>
+        </article>
+        <article class="kpi-item">
+          <span class="kpi-label">Incomplete</span>
+          <strong>${incomplete}</strong>
+        </article>
+        <article class="kpi-item">
+          <span class="kpi-label">Total Photos</span>
+          <strong>${totalPhotos}</strong>
+        </article>
+      `;
+    }
+
     function renderSavedProperties() {
       if (!allProperties.length) {
         savedPropertiesList.innerHTML = '<div class="saved-empty">No saved properties yet.</div>';
@@ -686,11 +741,10 @@
       }
 
       savedPropertiesList.innerHTML = allProperties.map((property) => {
-        const photoGroups = buildPhotoGroups(property.photos);
+        const summary = getPropertyPhotoSummary(property);
         const propertyName = property.property_name || property.building || 'Unnamed Property';
-        const detailText = photoGroups.length
-          ? `${photoGroups.reduce((sum, group) => sum + group.photos.length, 0)} saved photos`
-          : 'No photos saved';
+        const detailText = `${summary.totalPhotos} saved photos`;
+        const statusClass = summary.status.toLowerCase().replace(/\s+/g, '-');
 
         return `
           <div class="saved-property-item">
@@ -699,14 +753,18 @@
                 <strong>${property.property_code || ('#' + property.id)}</strong>
                 <span>${propertyName}</span>
               </div>
-              <button type="button" class="secondary saved-open-btn" data-property-id="${property.id}">Open</button>
+              <span class="status-badge ${statusClass}">${summary.status}</span>
             </div>
             <div class="saved-property-meta">
               <span>${property.listing_type || 'Sale'}</span>
               <span>${property.building || 'Property'}</span>
               <span>${formatCurrency(property.price || 0)}</span>
             </div>
-            <small>${detailText}</small>
+            <div class="saved-summary-row">
+              <small>${detailText}</small>
+              <small>${summary.percent}% complete</small>
+            </div>
+            <button type="button" class="secondary saved-open-btn" data-property-id="${property.id}">Open Property</button>
           </div>
         `;
       }).join('');
@@ -717,6 +775,7 @@
       if (!property) return;
 
       const photoGroups = buildPhotoGroups(property.photos);
+      const summary = getPropertyPhotoSummary(property);
       const details = [
         ['Property ID', property.property_code || ('#' + property.id)],
         ['Property Name', property.property_name || '—'],
@@ -728,7 +787,8 @@
         ['Bathrooms', property.bathrooms || 0],
         ['Garage', property.garage || 0],
         ['Carport', property.carport || 0],
-        ['Price', formatCurrency(property.price || 0)]
+        ['Price', formatCurrency(property.price || 0)],
+        ['Completion', `${summary.percent}%`]
       ];
 
       const photoMarkup = photoGroups.length
@@ -750,7 +810,10 @@
       savedPropertiesList.innerHTML = `
         <div class="saved-property-detail">
           <div class="saved-detail-header">
-            <h3>${property.property_code || ('#' + property.id)} — ${property.property_name || property.building || 'Unnamed Property'}</h3>
+            <div>
+              <div class="detail-header-badge">${summary.status}</div>
+              <h3>${property.property_code || ('#' + property.id)} — ${property.property_name || property.building || 'Unnamed Property'}</h3>
+            </div>
             <div class="saved-detail-actions">
               <button type="button" class="secondary saved-back-btn">Back to list</button>
               <button type="button" class="secondary" onclick="editProperty(${property.id})">Edit property</button>
@@ -791,6 +854,11 @@
         <div class="stat-item"><strong>${forSale}</strong><span>For Sale</span></div>
         <div class="stat-item"><strong>${forRent}</strong><span>For Rent</span></div>
       `;
+    }
+
+    function renderOverviewMetrics() {
+      renderDashboardSummary(allProperties);
+      renderStats(getFilteredProperties());
     }
 
     function downloadReportFile(filename, content, mimeType) {
@@ -900,6 +968,7 @@
         persistPhotoState(photoState);
 
         renderSavedProperties();
+        renderDashboardSummary(data);
         const filtered = getFilteredProperties();
         renderStats(filtered);
         renderTable(filtered);

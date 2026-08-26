@@ -1,14 +1,70 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 // Database file path
 const dbPath = process.env.DATABASE_URL || (process.env.NODE_ENV === 'test' ? ':memory:' : path.join(__dirname, 'property_dashboard.db'));
 const db = new sqlite3.Database(dbPath);
 
+function generatePropertyUuid() {
+  return crypto.randomUUID ? crypto.randomUUID() : `prop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function addMissingColumns() {
+  return new Promise((resolve) => {
+    db.all('PRAGMA table_info(properties)', (piErr, cols) => {
+      if (piErr || !Array.isArray(cols)) {
+        resolve();
+        return;
+      }
+
+      const columnNames = cols.map((column) => column.name);
+      const pending = [];
+
+      if (!columnNames.includes('property_code')) {
+        pending.push('ALTER TABLE properties ADD COLUMN property_code TEXT');
+      }
+      if (!columnNames.includes('listing_type')) {
+        pending.push("ALTER TABLE properties ADD COLUMN listing_type TEXT NOT NULL DEFAULT 'Sale'");
+      }
+      if (!columnNames.includes('photos')) {
+        pending.push("ALTER TABLE properties ADD COLUMN photos TEXT DEFAULT '{}' ");
+      }
+      if (!columnNames.includes('property_uuid')) {
+        pending.push('ALTER TABLE properties ADD COLUMN property_uuid TEXT');
+      }
+      if (!columnNames.includes('deleted_at')) {
+        pending.push('ALTER TABLE properties ADD COLUMN deleted_at DATETIME');
+      }
+      if (!columnNames.includes('updated_at')) {
+        pending.push('ALTER TABLE properties ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+      }
+
+      let remaining = pending.length;
+      if (!remaining) {
+        resolve();
+        return;
+      }
+
+      pending.forEach((sql) => {
+        db.run(sql, (alterErr) => {
+          if (alterErr) {
+            console.error('Error altering table:', alterErr.message);
+          }
+          remaining -= 1;
+          if (remaining === 0) {
+            resolve();
+          }
+        });
+      });
+    });
+  });
+}
+
 function normalizePropertyCodes() {
   return new Promise((resolve, reject) => {
-    db.all('SELECT id FROM properties ORDER BY id ASC', (err, rows) => {
+    db.all('SELECT id FROM properties WHERE deleted_at IS NULL OR deleted_at = "" ORDER BY id ASC', (err, rows) => {
       if (err) {
         return reject(err);
       }
@@ -36,9 +92,11 @@ function normalizePropertyCodes() {
 
 function initializeDatabase() {
   db.serialize(() => {
+    db.run('PRAGMA foreign_keys = ON');
     db.run(`
       CREATE TABLE IF NOT EXISTS properties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        property_uuid TEXT UNIQUE,
         land_size REAL NOT NULL,
         building_size REAL NOT NULL,
         building TEXT NOT NULL,
@@ -57,83 +115,110 @@ function initializeDatabase() {
         price REAL NOT NULL,
         property_code TEXT,
         photos TEXT DEFAULT '{}',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        deleted_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `, (err) => {
       if (err) {
-        console.error('Error creating table:', err.message);
+        console.error('Error creating properties table:', err.message);
         return;
       }
 
       db.run(`
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE IF NOT EXISTS rooms (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          username TEXT NOT NULL UNIQUE,
-          password TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          property_id INTEGER NOT NULL,
+          room_type TEXT NOT NULL,
+          room_number INTEGER NOT NULL,
+          display_name TEXT NOT NULL,
+          photo_limit INTEGER NOT NULL DEFAULT 5,
+          deleted_at DATETIME,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(property_id, room_type, room_number),
+          FOREIGN KEY(property_id) REFERENCES properties(id) ON DELETE CASCADE
         )
-      `, (userErr) => {
-        if (userErr) {
-          console.error('Error creating users table:', userErr.message);
+      `, (roomErr) => {
+        if (roomErr) {
+          console.error('Error creating rooms table:', roomErr.message);
           return;
         }
 
-        db.get('SELECT id FROM users WHERE username = ?', ['admin'], (adminErr, existingUser) => {
-          if (adminErr) {
-            console.error('Error checking admin user:', adminErr.message);
+        db.run(`
+          CREATE TABLE IF NOT EXISTS photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            property_id INTEGER NOT NULL,
+            room_id INTEGER,
+            room_type TEXT NOT NULL,
+            room_number INTEGER,
+            file_name TEXT,
+            mime_type TEXT DEFAULT 'image/jpeg',
+            data_url TEXT NOT NULL,
+            file_size INTEGER DEFAULT 0,
+            uploaded_by TEXT DEFAULT 'admin',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME,
+            FOREIGN KEY(property_id) REFERENCES properties(id) ON DELETE CASCADE,
+            FOREIGN KEY(room_id) REFERENCES rooms(id) ON DELETE CASCADE
+          )
+        `, (photoErr) => {
+          if (photoErr) {
+            console.error('Error creating photos table:', photoErr.message);
             return;
           }
 
-          if (!existingUser) {
-            db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['admin', 'Prospera'], (insertErr) => {
-              if (insertErr) {
-                console.error('Error creating default admin user:', insertErr.message);
-              }
+          db.run(`
+            CREATE TABLE IF NOT EXISTS users (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             username TEXT NOT NULL UNIQUE,
+             password TEXT NOT NULL,
+             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `, (userErr) => {
+            if (userErr) {
+             console.error('Error creating users table:', userErr.message);
+             return;
+            }
+
+            addMissingColumns().then(() => {
+             db.all('SELECT id, property_uuid FROM properties WHERE property_uuid IS NULL OR property_uuid = ?', ['',], (uuidErr, rows) => {
+               if (uuidErr) {
+                 console.error('Error reading missing property UUID values:', uuidErr.message);
+                 return;
+               }
+
+               rows.forEach((row) => {
+                 db.run('UPDATE properties SET property_uuid = ? WHERE id = ?', [generatePropertyUuid(), row.id]);
+               });
+             });
+
+             db.get('SELECT id FROM users WHERE username = ?', ['admin'], (adminErr, existingUser) => {
+               if (adminErr) {
+                 console.error('Error checking admin user:', adminErr.message);
+                 return;
+               }
+
+               if (!existingUser) {
+                 db.run('INSERT INTO users (username, password) VALUES (?, ?)', ['admin', 'Prospera'], (insertErr) => {
+                   if (insertErr) {
+                     console.error('Error creating default admin user:', insertErr.message);
+                   }
+                 });
+               }
+             });
+
+             normalizePropertyCodes().catch((codeErr) => {
+               console.error('Error normalizing property codes:', codeErr.message);
+             });
             });
-          }
+          });
         });
       });
 
-      db.all('PRAGMA table_info(properties)', (piErr, cols) => {
-        if (!piErr && Array.isArray(cols)) {
-          if (!cols.find(c => c.name === 'property_code')) {
-            db.run('ALTER TABLE properties ADD COLUMN property_code TEXT', (alterErr) => {
-              if (alterErr) {
-                console.error('Error adding property_code column:', alterErr.message);
-                return;
-              }
-              normalizePropertyCodes().catch((codeErr) => {
-                console.error('Error normalizing property codes:', codeErr.message);
-              });
-            });
-          }
-
-          if (!cols.find(c => c.name === 'listing_type')) {
-            db.run("ALTER TABLE properties ADD COLUMN listing_type TEXT NOT NULL DEFAULT 'Sale'", (alterErr) => {
-              if (alterErr) {
-                console.error('Error adding listing_type column:', alterErr.message);
-              }
-              normalizePropertyCodes().catch((codeErr) => {
-                console.error('Error normalizing property codes:', codeErr.message);
-              });
-            });
-          }
-
-          if (!cols.find(c => c.name === 'photos')) {
-            db.run("ALTER TABLE properties ADD COLUMN photos TEXT DEFAULT '{}'", (alterErr) => {
-              if (alterErr) {
-                console.error('Error adding photos column:', alterErr.message);
-              }
-            });
-          }
-        }
-
-        normalizePropertyCodes().catch((codeErr) => {
-          console.error('Error normalizing property codes:', codeErr.message);
-        });
-      });
-
-      console.log('✓ Database initialized successfully');
+      if (process.env.NODE_ENV !== 'test') {
+        console.log('✓ Database initialized successfully');
+      }
 
       if (process.env.NODE_ENV === 'test') return;
 
@@ -160,23 +245,23 @@ function initializeDatabase() {
             INSERT INTO properties
             (land_size, building_size, building, property_name, bedrooms, bathrooms,
              clean_kitchen, service_kitchen, electricity, swimming_pool,
-             garage, carport, security_post, furnishing, price)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             garage, carport, security_post, furnishing, price, property_uuid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
 
           stmt.run([
             Number(payload.land_size || 0), Number(payload.building_size || 0), payload.building || '', payload.property_name || null,
             Number(payload.bedrooms || 0), Number(payload.bathrooms || 0), Number(payload.clean_kitchen || 0), Number(payload.service_kitchen || 0),
             Number(payload.electricity || 0), Number(payload.swimming_pool || 0), Number(payload.garage || 0), Number(payload.carport || 0),
-            Number(payload.security_post || 0), payload.furnishing || 'None', Number(payload.price || 0)
+            Number(payload.security_post || 0), payload.furnishing || 'None', Number(payload.price || 0), generatePropertyUuid()
           ], function(insertErr) {
             if (insertErr) {
-              console.error('Error inserting initial payload:', insertErr.message);
+             console.error('Error inserting initial payload:', insertErr.message);
             } else {
-              normalizePropertyCodes().catch((codeErr) => {
-                console.error('Error normalizing seeded property codes:', codeErr.message);
-              });
-              console.log(`✓ Inserted initial property with id ${this.lastID}`);
+             normalizePropertyCodes().catch((codeErr) => {
+               console.error('Error normalizing seeded property codes:', codeErr.message);
+             });
+             console.log(`✓ Inserted initial property with id ${this.lastID}`);
             }
           });
 
@@ -187,4 +272,4 @@ function initializeDatabase() {
   });
 }
 
-module.exports = { db, initializeDatabase, normalizePropertyCodes };
+module.exports = { db, initializeDatabase, normalizePropertyCodes, generatePropertyUuid };

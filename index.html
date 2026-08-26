@@ -141,6 +141,13 @@
       <div id="photoManagementBody" class="photo-management-body"></div>
     </section>
 
+    <section class="card saved-properties-card">
+      <div class="section-header">
+        <h2>Property Data / Saved Properties</h2>
+      </div>
+      <div id="savedPropertiesList" class="saved-properties-list"></div>
+    </section>
+
     <section class="card">
       <div class="section-header">
         <h2>Property Listings</h2>
@@ -212,6 +219,7 @@
     const listingTypeFilter = document.getElementById('listingTypeFilter');
     const photoManagementCard = document.getElementById('photoManagementCard');
     const photoManagementBody = document.getElementById('photoManagementBody');
+    const savedPropertiesList = document.getElementById('savedPropertiesList');
     const togglePhotoManagerBtn = document.getElementById('togglePhotoManagerBtn');
     const formTitle = document.getElementById('formTitle');
     const submitBtn = document.getElementById('submitBtn');
@@ -579,6 +587,165 @@
       });
     }
 
+    function parsePhotoObject(rawPhotos) {
+      if (!rawPhotos) {
+        return {};
+      }
+
+      if (typeof rawPhotos === 'string') {
+        try {
+          const parsed = JSON.parse(rawPhotos);
+          return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      return rawPhotos && typeof rawPhotos === 'object' ? rawPhotos : {};
+    }
+
+    function getPhotoGroupLabel(roomKey) {
+      if (roomKey === 'electricity') {
+        return 'Electricity';
+      }
+
+      if (roomKey.startsWith('bedrooms-')) {
+        return `Bedroom ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('bathrooms-')) {
+        return `Bathroom ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('clean_kitchen-')) {
+        return `Clean Kitchen ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('service_kitchen-')) {
+        return `Service Kitchen ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('swimming_pool-')) {
+        return `Swimming Pool ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('security_post-')) {
+        return `Security Post ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('garage-')) {
+        return `Garage ${roomKey.split('-')[1]}`;
+      }
+      if (roomKey.startsWith('carport-')) {
+        return `Carport ${roomKey.split('-')[1]}`;
+      }
+
+      return roomKey.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+    }
+
+    function buildPhotoGroups(photoState) {
+      const state = parsePhotoObject(photoState);
+      return Object.entries(state)
+        .filter(([, value]) => Array.isArray(value) && value.length)
+        .map(([roomKey, photos]) => ({
+          roomKey,
+          label: getPhotoGroupLabel(roomKey),
+          photos: photos.filter(Boolean)
+        }));
+    }
+
+    function renderSavedProperties() {
+      if (!allProperties.length) {
+        savedPropertiesList.innerHTML = '<div class="saved-empty">No saved properties yet.</div>';
+        return;
+      }
+
+      savedPropertiesList.innerHTML = allProperties.map((property) => {
+        const photoGroups = buildPhotoGroups(property.photos);
+        const propertyName = property.property_name || property.building || 'Unnamed Property';
+        const detailText = photoGroups.length
+          ? `${photoGroups.reduce((sum, group) => sum + group.photos.length, 0)} saved photos`
+          : 'No photos saved';
+
+        return `
+          <div class="saved-property-item">
+            <div class="saved-property-head">
+              <div>
+                <strong>${property.property_code || ('#' + property.id)}</strong>
+                <span>${propertyName}</span>
+              </div>
+              <button type="button" class="secondary saved-open-btn" data-property-id="${property.id}">Open</button>
+            </div>
+            <div class="saved-property-meta">
+              <span>${property.listing_type || 'Sale'}</span>
+              <span>${property.building || 'Property'}</span>
+              <span>${formatCurrency(property.price || 0)}</span>
+            </div>
+            <small>${detailText}</small>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSavedPropertyDetail(propertyId) {
+      const property = allProperties.find((item) => item.id === Number(propertyId));
+      if (!property) return;
+
+      const photoGroups = buildPhotoGroups(property.photos);
+      const details = [
+        ['Property ID', property.property_code || ('#' + property.id)],
+        ['Property Name', property.property_name || '—'],
+        ['Type', property.building || '—'],
+        ['Listing Type', property.listing_type || 'Sale'],
+        ['Land Size', `${property.land_size || 0} m²`],
+        ['Building Size', `${property.building_size || 0} m²`],
+        ['Bedrooms', property.bedrooms || 0],
+        ['Bathrooms', property.bathrooms || 0],
+        ['Garage', property.garage || 0],
+        ['Carport', property.carport || 0],
+        ['Price', formatCurrency(property.price || 0)]
+      ];
+
+      const photoMarkup = photoGroups.length
+        ? photoGroups.map((group) => `
+            <div class="saved-photo-group">
+              <h4>${group.label}</h4>
+              <div class="saved-photo-grid">
+                ${group.photos.map((photo, index) => `
+                  <div class="saved-photo-thumb">
+                    <img src="${photo}" alt="${group.label} photo ${index + 1}" />
+                    <a href="${photo}" download="${group.label.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'photo'}-${index + 1}.png" target="_blank" rel="noopener">Download</a>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')
+        : '<div class="saved-empty">No photos saved for this property.</div>';
+
+      savedPropertiesList.innerHTML = `
+        <div class="saved-property-detail">
+          <div class="saved-detail-header">
+            <h3>${property.property_code || ('#' + property.id)} — ${property.property_name || property.building || 'Unnamed Property'}</h3>
+            <div class="saved-detail-actions">
+              <button type="button" class="secondary saved-back-btn">Back to list</button>
+              <button type="button" class="secondary" onclick="editProperty(${property.id})">Edit property</button>
+            </div>
+          </div>
+          <div class="saved-detail-grid">
+            ${details.map(([label, value]) => `
+              <div class="saved-detail-field">
+                <span>${label}</span>
+                <strong>${value}</strong>
+              </div>
+            `).join('')}
+          </div>
+          <div class="saved-photo-panel">
+            <h4>Saved Photos</h4>
+            ${photoMarkup}
+          </div>
+        </div>
+      `;
+
+      const backButton = savedPropertiesList.querySelector('.saved-back-btn');
+      if (backButton) {
+        backButton.addEventListener('click', renderSavedProperties);
+      }
+    }
+
     function renderStats(properties) {
       const total = properties.length;
       const totalValue = properties.reduce((sum, p) => sum + (Number(p.price) || 0), 0);
@@ -645,6 +812,7 @@
         });
         persistPhotoState(photoState);
 
+        renderSavedProperties();
         const filtered = getFilteredProperties();
         renderStats(filtered);
         renderTable(filtered);
@@ -762,6 +930,12 @@
     listingTypeFilter.addEventListener('change', refreshFilteredTable);
     photoManagementBody.addEventListener('change', handlePhotoUploads);
     photoManagementBody.addEventListener('click', handlePhotoDelete);
+    savedPropertiesList.addEventListener('click', (event) => {
+      const openButton = event.target.closest('.saved-open-btn');
+      if (openButton) {
+        renderSavedPropertyDetail(openButton.dataset.propertyId);
+      }
+    });
     togglePhotoManagerBtn.addEventListener('click', () => {
       const isHidden = photoManagementBody.classList.toggle('hidden');
       togglePhotoManagerBtn.textContent = isHidden ? 'Expand' : 'Collapse';
